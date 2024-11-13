@@ -84,15 +84,15 @@ def parse_objects(frame):
     frame['walls'].sort()
     frame['walls'] = list(k for k, _ in itertools.groupby(frame['walls']))
     # remove boundary walls
-    frame['walls'] = [w for w in frame['walls'] if
-                      (w[0][0] != 0 and w[0][0] != 180 and w[0][1] != 0 and w[0][1] != 180)]
+    # frame['walls'] = [w for w in frame['walls'] if
+    #                   (w[0][0] != 0 and w[0][0] != 180 and w[0][1] != 0 and w[0][1] != 180)]
     # remove duplicate fuse_walls
     frame['fuse_walls'].sort()
     frame['fuse_walls'] = list(k for k, _ in itertools.groupby(frame['fuse_walls']))
     grid_objs = []
     assert 'agent' in frame.keys()
     for key in frame.keys():
-        print(key)
+        # print(key)
         if key == 'size':
             continue
         obj = frame[key]

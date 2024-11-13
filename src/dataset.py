@@ -1,9 +1,9 @@
 import json
 import os
-import torch
 from tqdm import tqdm
 from grid_objects import *
 from SSP import *
+
 
 def index_data(json_list, path_list):
     print(f'processing files {len(json_list)}')
@@ -137,7 +137,6 @@ class TransitionDataset(torch.utils.data.Dataset):
             for t, n in tl:  # für jedes bild in jedem trial mach folgendes:
                 video = self.data_tuples[t][n][0]
                 frame_ssps.append(self._get_frame_ssp(video, self.data_tuples[t][n][1]))
-                print("LOL", t)
             print("DONE")
         return states, actions, lens, n_nodes
 

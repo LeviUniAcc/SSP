@@ -2,7 +2,6 @@ import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import nengo_spa as spa
-import grid_objects
 
 from matplotlib.patches import Rectangle, Polygon, Circle
 from sspspace import SPSpace, SSPSpace, HexagonalSSPSpace
@@ -71,38 +70,36 @@ class SSP:
 
         fig, ax = plt.subplots()
 
-        plt.imshow(global_grid, extent=[-10, 10, -10, 10], cmap='gray')
-        plt.xticks([-10, 0, 10])
-        plt.yticks([-10, 0, 10])
-        plt.hlines(0, -10, 10, color=(.8, .8, .8, .5))
-        plt.vlines(0, -10, 10, color=(.8, .8, .8, .5))
+        plt.imshow(global_grid, extent=[0, 200, 0, 200], cmap='gray')  # Setze extent auf [0, 200, 0, 200]
+        plt.xticks([0, 100, 200])  # x-Achse bei 0, 100 und 200
+        plt.yticks([0, 100, 200])  # y-Achse bei 0, 100 und 200
 
+        # Mittellinien
+        plt.hlines(100, 0, 200, color=(.8, .8, .8, .5))  # Horizontale Linie bei 100
+        plt.vlines(100, 0, 200, color=(.8, .8, .8, .5))  # Vertikale Linie bei 100
+
+        # Gitterlinien
         grid_color = (.3, .3, .3, .5)
+        grid_spacing = 20  # Abstand der Gitterlinien in Pixeln
 
-        for i in range(10):
-            plt.hlines(i + 0.5, -10, 10, color=grid_color, linewidth=1.)
-            plt.hlines(-i + 0.5, -10, 10, color=grid_color, linewidth=1.)
-            plt.vlines(i + 0.5, -10, 10, color=grid_color, linewidth=1.)
-            plt.vlines(-i + 0.5, -10, 10, color=grid_color, linewidth=1.)
-
-        # add walls
-        for object_element in self.grid_objects:
-            if get_value_as_string(object_element.name['type']) == "walls":
-                ax.add_patch(
-                    Rectangle((object_element.x, object_element.y), width=20, height=20, color='gray', zorder=3))
+        for i in range(0, 200, grid_spacing):  # Setze Gitterlinien im Abstand von 20
+            plt.hlines(i + grid_spacing / 2, 0, 200, color=grid_color, linewidth=1.0)
+            plt.vlines(i + grid_spacing / 2, 0, 200, color=grid_color, linewidth=1.0)
 
         # add agent
         for object_element in self.grid_objects:
+            # walls
+            if get_value_as_string(object_element.name['type']) == "walls":
+                ax.add_patch(
+                    Rectangle((object_element.y, 200-object_element.x), width=20, height=20, color='gray', zorder=3))
+            # agent
             if get_value_as_string(object_element.name['type']) == "agent":
-                ax.add_patch(Polygon([[object_element.x, object_element.y], [object_element.x, object_element.y+20], [object_element.x+20, object_element.y+10]], closed=True, color='r', zorder=5))
-
-        # add objects
-        for object_element in self.grid_objects:
-            if get_value_as_string(object_element.name['type']) == "vase":
-                ax.add_patch(Circle((object_element.x, object_element.y), radius=.35, color='g', zorder=5))
-        for object_element in self.grid_objects:
+                ax.add_patch(Polygon([[object_element.y, 200-object_element.x], [object_element.y, 200-object_element.x+20], [object_element.y+20, 200-object_element.x+10]], closed=True, color='r', zorder=5))
+            # objects
+            if get_value_as_string(object_element.name['type']) == "objects":
+                ax.add_patch(Circle((object_element.y, 200-object_element.x), radius=10, color='g', zorder=5))
             if get_value_as_string(object_element.name['type']) == "home_entity":
-                ax.add_patch(Rectangle((object_element.x, object_element.y), width=.6, height=.6, color='m', zorder=5))
+                ax.add_patch(Rectangle((object_element.y, 200-object_element.x), width=15, height=15, color='m', zorder=5))
 
         plt.title('Global Environment')
         plt.show()
