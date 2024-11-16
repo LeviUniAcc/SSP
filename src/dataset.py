@@ -31,8 +31,17 @@ def index_data(json_list, path_list):
     return data_tuples
 
 
-# ========================== Dataset class ==========================
+def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSP):
+    with open(jsonfile, 'rb') as f:
+        frame_data = json.load(f)
+    flat_list = [x for xs in frame_data for x in xs]
+    # extract entities
+    grid_objs = parse_objects(flat_list[frame_idx])
+    frame_ssp = initialized_ssp.generate_env_ssp(grid_objs)
+    return frame_ssp
 
+
+# ========================== Dataset class ==========================
 class TransitionDataset(torch.utils.data.Dataset):
     """
     Training dataset class for the behavior cloning mlp model.
@@ -107,16 +116,7 @@ class TransitionDataset(torch.utils.data.Dataset):
             self.data_tuples = index_dict['data_tuples']
         self.tot_trials = len(self.path_list) * 9
 
-    def _get_frame_ssp(self, jsonfile, frame_idx):
-        with open(jsonfile, 'rb') as f:
-            frame_data = json.load(f)
-        flat_list = [x for xs in frame_data for x in xs]
-        # extract entities
-        grid_objs = parse_objects(flat_list[frame_idx])
-        frame_ssp = SSP(grid_objs).vector
-        return frame_ssp
-
-    def get_trial(self, trials, step=10):
+    def get_trial(self, trials, step, initialized_ssp):
         # retrieve state embeddings and actions from cached file
         states = []
         actions = []
@@ -136,14 +136,15 @@ class TransitionDataset(torch.utils.data.Dataset):
             lens.append(len(tl))
             for t, n in tl:  # für jedes bild in jedem trial mach folgendes:
                 video = self.data_tuples[t][n][0]
-                frame_ssps.append(self._get_frame_ssp(video, self.data_tuples[t][n][1]))
+                frame_ssps.append(_get_frame_ssp(video, self.data_tuples[t][n][1], initialized_ssp))
             print("DONE")
         return states, actions, lens, n_nodes
 
-    def __getitem__(self, idx):
+    def __getitem_ssp__(self, idx, initialized_ssp):
         # ep_trials = [idx * self.num_trials + t for t in range(self.num_trials)] # [idx, ..., idx+8]
         ep_trials = range(0, self.num_trials)
-        states, actions, lens, n_nodes = self.get_trial(ep_trials, step=self.action_range)
+        states, actions, lens, n_nodes = self.get_trial(ep_trials, step=self.action_range,
+                                                        initialized_ssp=initialized_ssp)
         return states, actions, lens, n_nodes
 
     def __len__(self):

@@ -1,13 +1,10 @@
 import math
-
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import nengo_spa as spa
 
 from matplotlib.patches import Rectangle, Polygon, Circle
-from webcolors import rgb_to_name
-
 from sspspace import HexagonalSSPSpace
 
 SHAPES = [
@@ -35,93 +32,85 @@ ENTITIES = [
 
 class SSP:
 
-    def __init__(self,
-                 grid_objects_param,
-                 ):
-        self.grid_objects = grid_objects_param
+    def __init__(self):
         self.SSP_DIM = 1015
         self.RES_X, self.RES_Y = 200, 200
+        self.ssp_grid, self.ssp_space, self.vocab_combined = self.init_ssps()
 
-        rng = np.random.RandomState(42)
-        vocab = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
+    def generate_env_ssp(self, grid_objects_param):
+        # init empty environment
+        global_env_ssp = np.zeros(self.SSP_DIM)
 
-        # Add semantic pointers for each shape to the vocabulary
-        for i, shape_name in enumerate(SHAPES):
-            vector = vocab.algebra.create_vector(self.SSP_DIM, properties={"positive", "unitary"})
-            vocab.add(f"{shape_name.upper().replace(' ', '')}", vector)
+        # bind and add alls object ssps
+        for obj in grid_objects_param:
+            obj_type = get_value_from_string(obj.name['type'])
+            obj_shape = get_value(obj.name['shape'], "shape")
+            obj_x = int(float(obj.name['x']))
+            obj_y = int(float(obj.name['y']))
 
-        # Add semantic pointers for each entity to the vocabulary
-        for i, entity_name in enumerate(ENTITIES):
-            vector = vocab.algebra.create_vector(self.SSP_DIM, properties={"positive", "unitary"})
-            vocab.add(f"{entity_name.upper().replace(' ', '')}", vector)
+            object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"].v
+            position_ssp = self.ssp_grid[obj_x, obj_y]
 
-        # Add semantic pointers for each color to the vocabulary
-        for obj in self.grid_objects:
-            vector = vocab.algebra.create_vector(self.SSP_DIM, properties={"positive", "unitary"})
-            color_name = rgb_to_name(obj.name['color']).upper().replace(' ', '')
-            if vocab.get(color_name) is None:
-                vocab.add(f"{color_name.upper()}", vector)
+            object_ssp = self.ssp_space.bind(object_ssp, position_ssp)
+            global_env_ssp += object_ssp.squeeze()
+ 
+        # example visualization of image
+        # self._print_image(grid_objects_param)
 
+        # example extracted visualization
+        # self._print_extracted_image(global_env_ssp, grid_objects_param)
+
+        # return vector = "idk yet"
+
+    def init_ssps(self):
         # Create SSP spaces for xy coordinates and labels
         ssp_space = HexagonalSSPSpace(domain_dim=2, ssp_dim=self.SSP_DIM, length_scale=5,
                                       domain_bounds=np.array([[0, self.RES_X], [0, self.RES_Y]]))
-
         # Generate xy coordinates
         x_coords, y_coords = torch.meshgrid(torch.arange(0, self.RES_X), torch.arange(0, self.RES_Y),
                                             indexing='ij')
         coords = np.stack((x_coords.flatten(), y_coords.flatten()), axis=-1)
         ssp_grid = ssp_space.encode(coords)
         ssp_grid = ssp_grid.reshape((self.RES_X, self.RES_Y, -1))
-
         print(f'Generated SSP grid: {ssp_grid.shape}')
+        rng = np.random.RandomState(42)
 
-        # combine all object ssps
-        ## init empty environment
-        global_env_ssp = np.zeros(self.SSP_DIM)
+        vocab = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
+        vocab_shape_helper = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
+        vocab_type_helper = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
+        vocab_combined = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
 
-        ## bind and add alls object ssps
-        for obj in self.grid_objects:
-            obj_type = get_value_from_string(obj.name['type'])
-            obj_shape = get_value(obj.name['shape'], "shape")
-            obj_color = rgb_to_name(obj.name['color']).upper().replace(' ', '')
-            obj_x = int(float(obj.name['x']))
-            obj_y = int(float(obj.name['y']))
+        # Add semantic pointers for each shape to the vocabulary
+        for i, shape_name in enumerate(SHAPES):
+            vector = vocab.algebra.create_vector(self.SSP_DIM, properties={"positive", "unitary"})
+            vocab.add(f"{shape_name.upper().replace(' ', '')}", vector)
+            vocab_shape_helper.add(f"{shape_name.upper().replace(' ', '')}", vector)
+        # Add semantic pointers for each entity to the vocabulary
+        for i, entity_name in enumerate(ENTITIES):
+            vector = vocab.algebra.create_vector(self.SSP_DIM, properties={"positive", "unitary"})
+            vocab.add(f"{entity_name.upper().replace(' ', '')}", vector)
+            vocab_type_helper.add(f"{entity_name.upper().replace(' ', '')}", vector)
 
-            type_ssp = vocab[obj_type.upper()].v
-            shape_ssp = vocab[obj_shape.upper()].v
-            color_ssp = vocab[obj_color].v
-            position_ssp = ssp_grid[obj_x, obj_y]
+        for type_key, type_vector in vocab_type_helper.items():
+            for shape_key, shape_vector in vocab_shape_helper.items():
+                object_ssp = ssp_space.bind(type_vector.v, shape_vector.v)
+                vocab_combined.add(f"{type_key.upper()}_{shape_key.upper()}", object_ssp[0])
 
-            object_ssp = ssp_space.bind(ssp_space.bind(ssp_space.bind(type_ssp, shape_ssp), color_ssp), position_ssp)
-            global_env_ssp += object_ssp.squeeze()
+        return ssp_grid, ssp_space, vocab_combined
 
-        # example visualization of image
-        self._print_image()
-        # example extracted visualization
-        self._print_extracted_image(global_env_ssp, ssp_grid, ssp_space, vocab)
-
-        self.vector = "idk yet"
-
-    def _print_extracted_image(self, ssp_dim_param, global_env_ssp_param, ssp_grid_param,
-                               ssp_space_param, vocab_param):
-        for obj in self.grid_objects:
+    def _print_extracted_image(self, global_env_ssp_param, grid_objects):
+        for obj in grid_objects:
             obj_type = get_value_from_string(obj.name['type'])
             if obj_type == 'agent':
                 obj_type = get_value_from_string(obj.name['type'])
                 obj_shape = get_value(obj.name['shape'], "shape")
-                obj_color = rgb_to_name(obj.name['color']).upper().replace(' ', '')
+                object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"].v
 
-                type_ssp = vocab_param[obj_type.upper()].v
-                shape_ssp = vocab_param[obj_shape.upper()].v
-                color_ssp = vocab_param[obj_color].v
-
-                object_without_position_ssp = ssp_space_param.bind(ssp_space_param.bind(type_ssp, shape_ssp), color_ssp)
-
-                inv_ssp = ssp_space_param.invert(object_without_position_ssp)
+                inv_ssp = self.ssp_space.invert(object_ssp)
 
                 # get similarity map of label with all locations by binding with inverse ssp
-                out = ssp_space_param.bind(global_env_ssp_param, inv_ssp)
-                sims = out @ ssp_grid_param.reshape((-1, ssp_dim_param)).T
+                out = self.ssp_space.bind(global_env_ssp_param, inv_ssp)
+                sims = out @ self.ssp_grid.reshape((-1, self.SSP_DIM)).T
 
                 # decode location = point with maximum similarity to label
                 sims_map = sims.reshape((self.RES_X, self.RES_Y))
@@ -162,7 +151,7 @@ class SSP:
 
                 plt.show()
 
-    def _print_image(self):
+    def _print_image(self, grid_objects):
         fig, ax = plt.subplots()
         global_grid = np.zeros((self.RES_X, self.RES_Y))
         plt.imshow(global_grid, extent=[0, 200, 0, 200], cmap='gray')  # Setze extent auf [0, 200, 0, 200]
@@ -175,7 +164,7 @@ class SSP:
             plt.hlines(i + grid_spacing, 0, self.RES_Y, color=grid_color, linewidth=1.0)
             plt.vlines(i + grid_spacing, 0, self.RES_X, color=grid_color, linewidth=1.0)
         # add elements
-        for object_element in self.grid_objects:
+        for object_element in grid_objects:
             x_pos_nulled = object_element.x - 10 + 20
             y_pos_nulled = object_element.y - 10
             # walls

@@ -1,15 +1,16 @@
 import os
 import pickle as pkl
 from dataset import TransitionDataset
+from src.SSP import SSP
 
 
-def generate_files(idx):
+def generate_files(idx, initialized_ssp):
     print('Generating idx', idx)
     print(os.path.abspath(PATH + str(idx) + '.pkl'))
     if os.path.exists(PATH + str(idx) + '.pkl'):
         print('Index', idx, 'skipped.')
         return
-    states, actions, lens, n_nodes = dataset.__getitem__(idx)
+    states, actions, lens, n_nodes = dataset.__getitem_ssp__(idx, initialized_ssp)
     with open(PATH + str(idx) + '.pkl', 'wb') as f:
         pkl.dump([states, actions, lens, n_nodes], f)
 
@@ -31,4 +32,5 @@ if __name__ == "__main__":
         action_range=15,
         process_data=1
     )
-    generate_files(5)
+    initialized_ssp = SSP()
+    generate_files(5, initialized_ssp)
