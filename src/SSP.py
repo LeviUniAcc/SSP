@@ -5,6 +5,8 @@ import matplotlib.pyplot as plt
 import nengo_spa as spa
 
 from matplotlib.patches import Rectangle, Polygon, Circle
+from scipy.ndimage import maximum_filter
+
 from sspspace import HexagonalSSPSpace
 
 SHAPES = [
@@ -53,13 +55,13 @@ class SSP:
 
             object_ssp = self.ssp_space.bind(object_ssp, position_ssp)
             global_env_ssp += object_ssp.squeeze()
- 
+
         # example visualization of image
         # self._print_image(grid_objects_param)
 
         # example extracted visualization
-        # self._print_extracted_image(global_env_ssp, grid_objects_param)
-
+        self._print_extracted_image(global_env_ssp, grid_objects_param)
+        pass
         # return vector = "idk yet"
 
     def init_ssps(self):
@@ -113,14 +115,15 @@ class SSP:
                 sims = out @ self.ssp_grid.reshape((-1, self.SSP_DIM)).T
 
                 # decode location = point with maximum similarity to label
+                # IDK why have to spiegeln and 1. WH and rot but whatever
                 sims_map = sims.reshape((self.RES_X, self.RES_Y))
+                sims_map = np.transpose(sims_map)
+                sims_map = np.rot90(sims_map, k=1)
 
                 pred_loc = np.array(np.unravel_index(np.argmax(sims_map), sims_map.shape))
-                x_predicted = pred_loc[1] - 10
-                y_predicted = 200 - (pred_loc[0] - 10 + 20)
-                x_correct = obj.y - 10
-                y_correct = 200 - (obj.x - 10 + 20)
-                distance = abs(math.sqrt((x_predicted - x_correct) ** 2 + (y_predicted - y_correct) ** 2))
+                x_correct = obj.y
+                y_correct = 200 - obj.x
+                distance = abs(math.sqrt((pred_loc[1] - x_correct) ** 2 + (pred_loc[0] - y_correct) ** 2))
 
                 RED = '\033[31m'  # Rot
                 GREEN = '\033[32m'  # Grün
@@ -133,21 +136,29 @@ class SSP:
                     color = YELLOW
 
                 print(
-                    f'{obj_type.upper()} predicted location: {x_predicted, y_predicted}, correct location: {x_correct, y_correct}, {color} distance between: {distance} {RESET}')
+                    f'{obj_type.upper()} predicted location: {pred_loc[1], pred_loc[0]}, correct location: {x_correct, y_correct}, {color} distance between: {distance} {RESET}')
 
-                plt.imshow(sims_map, extent=(0, self.RES_X, 0, self.RES_Y))
+                plt.imshow(sims_map, cmap='plasma', origin='lower', extent=(0, self.RES_X, 0, self.RES_Y),
+                           interpolation='none')
+                plt.colorbar()
                 plt.xticks([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
                 plt.yticks([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
 
-                size = 5
-                plt.plot([x_predicted - size, x_predicted + size], [y_predicted - size, y_predicted + size],
+                size = 1
+                plt.plot([pred_loc[1] - size, pred_loc[1] + size], [pred_loc[0] - size, pred_loc[0] + size],
                          color="red", linewidth=1.5)
-                plt.plot([x_predicted - size, x_predicted + size], [y_predicted + size, y_predicted - size],
+                plt.plot([pred_loc[1] - size, pred_loc[1] + size], [pred_loc[0] + size, pred_loc[0] - size],
                          color="red", linewidth=1.5)
                 plt.plot([x_correct - size, x_correct + size], [y_correct - size, y_correct + size],
                          color="blue", linewidth=1.5)
                 plt.plot([x_correct - size, x_correct + size], [y_correct + size, y_correct - size],
                          color="blue", linewidth=1.5)
+
+                local_max = maximum_filter(sims_map, size=3)
+                maxima = (sims_map == local_max)
+                plt.scatter(np.where(maxima)[1], np.where(maxima)[0], color='white', s=20, label='Local Maxima')
+
+                plt.scatter(pred_loc[1], pred_loc[0], color='green', s=20, label='Local Maxima')
 
                 plt.show()
 
