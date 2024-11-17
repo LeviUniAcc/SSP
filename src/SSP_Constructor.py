@@ -1,13 +1,13 @@
 import math
+import os
+
 import numpy as np
-import torch
 import matplotlib.pyplot as plt
 import nengo_spa as spa
+import torch
 
 from matplotlib.patches import Rectangle, Polygon, Circle
-from scipy.ndimage import maximum_filter
-
-from sspspace import HexagonalSSPSpace
+from sspspace import HexagonalSSPSpace, SSP, ssp
 
 SHAPES = [
     # walls
@@ -32,16 +32,19 @@ ENTITIES = [
 ]
 
 
-class SSP:
+class SSP_Constructor:
 
-    def __init__(self):
-        self.SSP_DIM = 1015
+    def __init__(self, n_rotations: int = 13, n_scale: int = 13, length_scale: int = 1):
+        self.n_scale = n_scale
+        self.n_rotations = n_rotations
         self.RES_X, self.RES_Y = 200, 200
-        self.ssp_grid, self.ssp_space, self.vocab_combined = self.init_ssps()
+        self.length_scale = length_scale
+        self.counter = 1
+        self.ssp_grid, self.ssp_space, self.vocab_combined = self.init_ssp_constructor()
 
     def generate_env_ssp(self, grid_objects_param):
         # init empty environment
-        global_env_ssp = np.zeros(self.SSP_DIM)
+        global_env_ssp = SSP(np.zeros(self.ssp_space.ssp_dim).reshape((1, -1)))
 
         # bind and add alls object ssps
         for obj in grid_objects_param:
@@ -50,53 +53,57 @@ class SSP:
             obj_x = int(float(obj.name['x']))
             obj_y = int(float(obj.name['y']))
 
-            object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"].v
-            position_ssp = self.ssp_grid[obj_x, obj_y]
+            object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"]
+            position_ssp = self.ssp_space.encode([[obj_x, obj_y]])
 
-            object_ssp = self.ssp_space.bind(object_ssp, position_ssp)
-            global_env_ssp += object_ssp.squeeze()
-
+            object_pos_ssp = object_ssp * position_ssp
+            global_env_ssp = global_env_ssp + object_pos_ssp
         # example visualization of image
         # self._print_image(grid_objects_param)
 
         # example extracted visualization
-        self._print_extracted_image(global_env_ssp, grid_objects_param)
-        pass
+        # self._print_extracted_image(global_env_ssp, grid_objects_param)
         # return vector = "idk yet"
 
-    def init_ssps(self):
+    def init_ssp_constructor(self):
         # Create SSP spaces for xy coordinates and labels
-        ssp_space = HexagonalSSPSpace(domain_dim=2, ssp_dim=self.SSP_DIM, length_scale=5,
-                                      domain_bounds=np.array([[0, self.RES_X], [0, self.RES_Y]]))
-        # Generate xy coordinates
-        x_coords, y_coords = torch.meshgrid(torch.arange(0, self.RES_X), torch.arange(0, self.RES_Y),
-                                            indexing='ij')
-        coords = np.stack((x_coords.flatten(), y_coords.flatten()), axis=-1)
-        ssp_grid = ssp_space.encode(coords)
-        ssp_grid = ssp_grid.reshape((self.RES_X, self.RES_Y, -1))
-        print(f'Generated SSP grid: {ssp_grid.shape}')
-        rng = np.random.RandomState(42)
+        xs = np.linspace(0, self.RES_X, self.RES_X)
+        ys = np.linspace(0, self.RES_Y, self.RES_Y)
+        x, y = np.meshgrid(xs, ys)
+        xys = np.vstack((x.flatten(), y.flatten())).T
 
-        vocab = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
-        vocab_shape_helper = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
-        vocab_type_helper = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
-        vocab_combined = spa.Vocabulary(dimensions=self.SSP_DIM, pointer_gen=rng)
+        ssp_space = HexagonalSSPSpace(domain_dim=2, n_rotates=self.n_rotations, n_scales=self.n_scale)
+        ssp_space.update_lengthscale(self.length_scale)
+        print(f"dim: {ssp_space.ssp_dim}")
+        # Generate xy coordinates
+        ssp_grid = ssp_space.encode(xys)
+
+        # Generate object SSPs
+        vocab = spa.Vocabulary(dimensions=ssp_space.ssp_dim)
+        vocab_simple = {}
+        vocab_shape_helper = {}
+        vocab_type_helper = {}
+        vocab_combined = {}
 
         # Add semantic pointers for each shape to the vocabulary
         for i, shape_name in enumerate(SHAPES):
-            vector = vocab.algebra.create_vector(self.SSP_DIM, properties={"positive", "unitary"})
-            vocab.add(f"{shape_name.upper().replace(' ', '')}", vector)
-            vocab_shape_helper.add(f"{shape_name.upper().replace(' ', '')}", vector)
+            shape_vector = vocab.algebra.create_vector(ssp_space.ssp_dim, properties={"positive", "unitary"})
+            shape_ssp = SSP(shape_vector)
+            vocab_simple[f"{shape_name.upper().replace(' ', '')}"] = shape_ssp
+            vocab_shape_helper[f"{shape_name.upper().replace(' ', '')}"] = shape_ssp
+
         # Add semantic pointers for each entity to the vocabulary
         for i, entity_name in enumerate(ENTITIES):
-            vector = vocab.algebra.create_vector(self.SSP_DIM, properties={"positive", "unitary"})
-            vocab.add(f"{entity_name.upper().replace(' ', '')}", vector)
-            vocab_type_helper.add(f"{entity_name.upper().replace(' ', '')}", vector)
+            entity_vector = vocab.algebra.create_vector(ssp_space.ssp_dim, properties={"positive", "unitary"})
+            entity_ssp = SSP(entity_vector)
+            vocab_simple[f"{entity_name.upper().replace(' ', '')}"] = entity_ssp
+            vocab_type_helper[f"{entity_name.upper().replace(' ', '')}"] = entity_ssp
 
-        for type_key, type_vector in vocab_type_helper.items():
-            for shape_key, shape_vector in vocab_shape_helper.items():
-                object_ssp = ssp_space.bind(type_vector.v, shape_vector.v)
-                vocab_combined.add(f"{type_key.upper()}_{shape_key.upper()}", object_ssp[0])
+        # combine ssps
+        for type_key, type_ssp in vocab_type_helper.items():
+            for shape_key, shape_ssp in vocab_shape_helper.items():
+                object_ssp = type_ssp * shape_ssp
+                vocab_combined[f"{type_key.upper()}_{shape_key.upper()}"] = object_ssp
 
         return ssp_grid, ssp_space, vocab_combined
 
@@ -106,18 +113,14 @@ class SSP:
             if obj_type == 'agent':
                 obj_type = get_value_from_string(obj.name['type'])
                 obj_shape = get_value(obj.name['shape'], "shape")
-                object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"].v
+                object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"]
 
-                inv_ssp = self.ssp_space.invert(object_ssp)
+                inv_ssp = ~object_ssp
 
                 # get similarity map of label with all locations by binding with inverse ssp
-                out = self.ssp_space.bind(global_env_ssp_param, inv_ssp)
-                sims = out @ self.ssp_grid.reshape((-1, self.SSP_DIM)).T
-
-                # decode location = point with maximum similarity to label
-                # IDK why have to spiegeln and 1. WH and rot but whatever
+                out = global_env_ssp_param * inv_ssp
+                sims = self.ssp_grid | out
                 sims_map = sims.reshape((self.RES_X, self.RES_Y))
-                sims_map = np.transpose(sims_map)
                 sims_map = np.rot90(sims_map, k=1)
 
                 pred_loc = np.array(np.unravel_index(np.argmax(sims_map), sims_map.shape))
@@ -137,7 +140,7 @@ class SSP:
 
                 print(
                     f'{obj_type.upper()} predicted location: {pred_loc[1], pred_loc[0]}, correct location: {x_correct, y_correct}, {color} distance between: {distance} {RESET}')
-
+                # img
                 plt.imshow(sims_map, cmap='plasma', origin='lower', extent=(0, self.RES_X, 0, self.RES_Y),
                            interpolation='none')
                 plt.colorbar()
@@ -154,13 +157,21 @@ class SSP:
                 plt.plot([x_correct - size, x_correct + size], [y_correct + size, y_correct - size],
                          color="blue", linewidth=1.5)
 
-                local_max = maximum_filter(sims_map, size=3)
-                maxima = (sims_map == local_max)
-                plt.scatter(np.where(maxima)[1], np.where(maxima)[0], color='white', s=20, label='Local Maxima')
+                # local_max = maximum_filter(sims_map, size=3)
+                # maxima = (sims_map == local_max)
+                # plt.scatter(np.where(maxima)[1], np.where(maxima)[0], color='white', s=20, label='Local Maxima')
 
-                plt.scatter(pred_loc[1], pred_loc[0], color='green', s=20, label='Local Maxima')
+                # plt.scatter(pred_loc[1], pred_loc[0], color='green', s=20, label='Local Maxima')
 
-                plt.show()
+                # folder_path = f"output_images/DIM{self.ssp_space.ssp_dim}_ls5"
+                # os.makedirs(folder_path, exist_ok=True)
+                # image_path = os.path.join(folder_path, f"plot_{self.counter}.png")
+                # self.counter = self.counter + 1
+                # plt.title(
+                #     f"n_scale: {self.n_scale}, n_rotations: {self.n_rotations}, length_scale: {self.length_scale}, dimensions: {self.ssp_space.ssp_dim}")
+                # plt.savefig(image_path)
+                # lt.show()
+                # plt.clf()
 
     def _print_image(self, grid_objects):
         fig, ax = plt.subplots()

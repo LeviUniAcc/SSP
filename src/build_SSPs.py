@@ -1,8 +1,8 @@
 import os
-import pickle as pkl
-from dataset import TransitionDataset
-from src.SSP import SSP
 
+from dataset import TransitionDataset
+from src.SSP_Constructor import SSP_Constructor
+from datetime import datetime
 
 def generate_files(idx, initialized_ssp):
     print('Generating idx', idx)
@@ -11,8 +11,10 @@ def generate_files(idx, initialized_ssp):
         print('Index', idx, 'skipped.')
         return
     states, actions, lens, n_nodes = dataset.__getitem_ssp__(idx, initialized_ssp)
+    return
     with open(PATH + str(idx) + '.pkl', 'wb') as f:
         pkl.dump([states, actions, lens, n_nodes], f)
+        pass
 
     print(PATH + str(idx) + '.pkl saved.')
 
@@ -32,5 +34,8 @@ if __name__ == "__main__":
         action_range=15,
         process_data=1
     )
-    initialized_ssp = SSP()
+    before = datetime.now()
+    initialized_ssp = SSP_Constructor(n_rotations=17, n_scale=17, length_scale=5)
     generate_files(5, initialized_ssp)
+    after = datetime.now()
+    print(f"duration: {after-before}")

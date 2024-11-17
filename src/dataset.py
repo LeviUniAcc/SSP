@@ -2,7 +2,7 @@ import json
 import os
 from tqdm import tqdm
 from grid_objects import *
-from SSP import *
+from SSP_Constructor import *
 
 
 def index_data(json_list, path_list):
@@ -31,7 +31,7 @@ def index_data(json_list, path_list):
     return data_tuples
 
 
-def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSP):
+def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSP_Constructor):
     with open(jsonfile, 'rb') as f:
         frame_data = json.load(f)
     flat_list = [x for xs in frame_data for x in xs]
