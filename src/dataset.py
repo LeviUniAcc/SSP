@@ -2,7 +2,7 @@ import json
 import os
 from tqdm import tqdm
 from grid_objects import *
-from SSP_Constructor import *
+from SSPConstructor import *
 
 
 def index_data(json_list, path_list):
@@ -31,7 +31,7 @@ def index_data(json_list, path_list):
     return data_tuples
 
 
-def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSP_Constructor):
+def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSPConstructor):
     with open(jsonfile, 'rb') as f:
         frame_data = json.load(f)
     flat_list = [x for xs in frame_data for x in xs]
@@ -137,7 +137,6 @@ class TransitionDataset(torch.utils.data.Dataset):
             for t, n in tl:  # für jedes bild in jedem trial mach folgendes:
                 video = self.data_tuples[t][n][0]
                 frame_ssps.append(_get_frame_ssp(video, self.data_tuples[t][n][1], initialized_ssp))
-            print("DONE")
         return states, actions, lens, n_nodes
 
     def __getitem_ssp__(self, idx, initialized_ssp):

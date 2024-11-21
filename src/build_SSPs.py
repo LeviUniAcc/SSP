@@ -1,8 +1,30 @@
+import json
 import os
 
 from dataset import TransitionDataset
-from src.SSP_Constructor import SSP_Constructor
+from src.SSPConstructor import SSPConstructor
 from datetime import datetime
+
+
+def append_to_json_file(file_name, new_data):
+    if os.path.exists(file_name):
+        with open(file_name, "r") as json_file:
+            try:
+                data = json.load(json_file)
+                if not isinstance(data, list):
+                    data = [data]
+            except json.JSONDecodeError:
+                data = []
+    else:
+        data = []
+
+    data.append(new_data)
+
+    with open(file_name, "w") as json_file:
+        json.dump(data, json_file, indent=4)
+
+    print(f"Daten wurden erfolgreich zu '{file_name}' hinzugefügt.")
+
 
 def generate_files(idx, initialized_ssp):
     print('Generating idx', idx)
@@ -34,8 +56,17 @@ if __name__ == "__main__":
         action_range=15,
         process_data=1
     )
-    before = datetime.now()
-    initialized_ssp = SSP_Constructor(n_rotations=17, n_scale=17, length_scale=5)
-    generate_files(5, initialized_ssp)
-    after = datetime.now()
-    print(f"duration: {after-before}")
+    combinations = [
+        {"n_rotations": 17, "n_scale": 17, "length_scale": 1}
+    ]
+    for combination in combinations:
+        print(combination)
+        initialized_ssp = SSPConstructor(
+            n_rotations=combination["n_rotations"],
+            n_scale=combination["n_scale"],
+            length_scale=combination["length_scale"]
+        )
+        generate_files(5, initialized_ssp)
+
+        file = "output_images/results.json"
+        append_to_json_file(file, initialized_ssp.results.to_dict())

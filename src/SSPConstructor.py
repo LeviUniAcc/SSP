@@ -5,7 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import nengo_spa as spa
 import torch
-
+import plotly.graph_objects as go
+from scipy.ndimage import maximum_filter, label
+from datetime import datetime
 from matplotlib.patches import Rectangle, Polygon, Circle
 from sspspace import HexagonalSSPSpace, SSP, ssp
 
@@ -32,7 +34,104 @@ ENTITIES = [
 ]
 
 
-class SSP_Constructor:
+# helper class
+class Element:
+    def __init__(self):
+        self.correct = 0
+        self.false = 0
+        self.average_distance = 0
+        self.average_distance_non_correct = 0
+        self.median_distance = []
+        self.median_distance_non_correct = []
+
+    def to_dict(self):
+        return {
+            "correct": self.correct,
+            "false": self.false,
+            "average_distance": self.average_distance,
+            "average_distance_non_correct": self.average_distance_non_correct,
+            "median_distance": self.median_distance,
+            "median_distance_non_correct": self.median_distance_non_correct
+        }
+
+
+class Result:
+    def __init__(self, n_rotations: int = 13, n_scale: int = 13, length_scale: int = 1):
+        self.img_amount = 0
+        self.dimensions = 0
+        self.length_scale = length_scale
+        self.n_rotations = n_rotations
+        self.n_scale = n_scale
+        self.correct_overall = 0
+        self.false_overall = 0
+        self.average_distance_overall = 0
+        self.average_distance_overall_non_correct = 0
+        self.median_distance_overall = []
+        self.median_distance_overall_non_correct = []
+        self.Elements = {
+            "agent": Element(),
+            "walls": Element(),
+            "key": Element(),
+            "blocking": Element(),
+            "fuse_walls": Element(),
+            "home_entity": Element(),
+            "objects": Element(),
+            "pin": Element(),
+            "lock": Element()
+        }
+
+    def to_dict(self):
+        return {
+            "img_amount": self.img_amount,
+            "dimensions": self.dimensions,
+            "length_scale": self.length_scale,
+            "n_rotations": self.n_rotations,
+            "n_scale": self.n_scale,
+            "correct_overall": self.correct_overall,
+            "false_overall": self.false_overall,
+            "average_distance_overall": self.average_distance_overall,
+            "average_distance_overall_non_correct": self.average_distance_overall_non_correct,
+            "median_distance_overall": self.median_distance_overall,
+            "median_distance_overall_non_correct": self.median_distance_overall_non_correct,
+            "Elements": {key: element.to_dict() for key, element in self.Elements.items()}
+        }
+
+
+def plot_3d_heatmap(sims_map):
+    # 3d plot
+    x = np.arange(sims_map.shape[1])  # x-Werte: 0 bis 199
+    y = np.arange(sims_map.shape[0])  # y-Werte: 0 bis 199
+    X, Y = np.meshgrid(x, y)
+    # Erstelle den interaktiven 3D-Plot
+    fig = go.Figure(data=[go.Surface(z=sims_map, x=X[0], y=Y[:, 0], colorscale='Viridis')])
+    # Layout und Labels
+    fig.update_layout(
+        title="Interactive 3D Plot of Sims Map",
+        scene=dict(
+            xaxis_title="X values",
+            yaxis_title="Y values",
+            zaxis_title="Map Values",
+        ),
+        margin=dict(l=0, r=0, t=50, b=0)  # Reduziert leere Ränder
+    )
+    # Zeige den Plot
+    fig.show()
+    fig.write_html("interactive_3d_plot.html")
+
+
+def find_top_k_points(sims_map, k=10):
+    flat_map = sims_map.ravel()
+    indices = np.argsort(flat_map)[::-1]
+    top_k_indices = indices[:k]
+    top_k_values = flat_map[top_k_indices]
+
+    top_k_coords = np.array(
+        np.unravel_index(top_k_indices, sims_map.shape)).T
+
+    return top_k_coords, top_k_values
+
+
+class SSPConstructor:
 
     def __init__(self, n_rotations: int = 13, n_scale: int = 13, length_scale: int = 1):
         self.n_scale = n_scale
@@ -40,12 +139,13 @@ class SSP_Constructor:
         self.RES_X, self.RES_Y = 200, 200
         self.length_scale = length_scale
         self.counter = 1
+        self.results = Result(n_rotations=n_rotations, n_scale=n_scale, length_scale=length_scale)
         self.ssp_grid, self.ssp_space, self.vocab_combined = self.init_ssp_constructor()
 
     def generate_env_ssp(self, grid_objects_param):
         # init empty environment
         global_env_ssp = SSP(np.zeros(self.ssp_space.ssp_dim).reshape((1, -1)))
-
+        self.results.img_amount = self.results.img_amount + 1
         # bind and add alls object ssps
         for obj in grid_objects_param:
             obj_type = get_value_from_string(obj.name['type'])
@@ -61,6 +161,8 @@ class SSP_Constructor:
         # example visualization of image
         # self._print_image(grid_objects_param)
 
+        # create results
+        self.update_results(global_env_ssp, grid_objects_param)
         # example extracted visualization
         # self._print_extracted_image(global_env_ssp, grid_objects_param)
         # return vector = "idk yet"
@@ -74,7 +176,8 @@ class SSP_Constructor:
 
         ssp_space = HexagonalSSPSpace(domain_dim=2, n_rotates=self.n_rotations, n_scales=self.n_scale)
         ssp_space.update_lengthscale(self.length_scale)
-        print(f"dim: {ssp_space.ssp_dim}")
+        self.results.dimensions = ssp_space.domain_dim
+
         # Generate xy coordinates
         ssp_grid = ssp_space.encode(xys)
 
@@ -108,9 +211,13 @@ class SSP_Constructor:
         return ssp_grid, ssp_space, vocab_combined
 
     def _print_extracted_image(self, global_env_ssp_param, grid_objects):
+        walls_count = 0
+        for obj in grid_objects:
+            if get_value_from_string(obj.name['type']) == 'walls':
+                walls_count += 1
         for obj in grid_objects:
             obj_type = get_value_from_string(obj.name['type'])
-            if obj_type == 'agent':
+            if obj_type == 'walls':
                 obj_type = get_value_from_string(obj.name['type'])
                 obj_shape = get_value(obj.name['shape'], "shape")
                 object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"]
@@ -123,55 +230,24 @@ class SSP_Constructor:
                 sims_map = sims.reshape((self.RES_X, self.RES_Y))
                 sims_map = np.rot90(sims_map, k=1)
 
+                top_k_coords, top_k_values = find_top_k_points(sims_map=sims_map, k=walls_count)
+                print("Koordinaten der größten Warscheinlichkeiten:", top_k_coords)
+                # plot_3d_heatmap(sims_map)
+
                 pred_loc = np.array(np.unravel_index(np.argmax(sims_map), sims_map.shape))
                 x_correct = obj.y
                 y_correct = 200 - obj.x
                 distance = abs(math.sqrt((pred_loc[1] - x_correct) ** 2 + (pred_loc[0] - y_correct) ** 2))
 
-                RED = '\033[31m'  # Rot
-                GREEN = '\033[32m'  # Grün
-                YELLOW = '\033[33m'  # Gelb
-                RESET = '\033[0m'  # Zurücksetzen auf Standardfarbe
-                color = RED
-                if distance < 5:
-                    color = GREEN
-                elif distance < 20:
-                    color = YELLOW
-
                 print(
-                    f'{obj_type.upper()} predicted location: {pred_loc[1], pred_loc[0]}, correct location: {x_correct, y_correct}, {color} distance between: {distance} {RESET}')
+                    f'{obj_type.upper()} predicted location: {pred_loc[1], pred_loc[0]}, correct location: {x_correct, y_correct}, distance between: {distance}')
                 # img
                 plt.imshow(sims_map, cmap='plasma', origin='lower', extent=(0, self.RES_X, 0, self.RES_Y),
                            interpolation='none')
                 plt.colorbar()
                 plt.xticks([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
                 plt.yticks([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
-
-                size = 1
-                plt.plot([pred_loc[1] - size, pred_loc[1] + size], [pred_loc[0] - size, pred_loc[0] + size],
-                         color="red", linewidth=1.5)
-                plt.plot([pred_loc[1] - size, pred_loc[1] + size], [pred_loc[0] + size, pred_loc[0] - size],
-                         color="red", linewidth=1.5)
-                plt.plot([x_correct - size, x_correct + size], [y_correct - size, y_correct + size],
-                         color="blue", linewidth=1.5)
-                plt.plot([x_correct - size, x_correct + size], [y_correct + size, y_correct - size],
-                         color="blue", linewidth=1.5)
-
-                # local_max = maximum_filter(sims_map, size=3)
-                # maxima = (sims_map == local_max)
-                # plt.scatter(np.where(maxima)[1], np.where(maxima)[0], color='white', s=20, label='Local Maxima')
-
-                # plt.scatter(pred_loc[1], pred_loc[0], color='green', s=20, label='Local Maxima')
-
-                # folder_path = f"output_images/DIM{self.ssp_space.ssp_dim}_ls5"
-                # os.makedirs(folder_path, exist_ok=True)
-                # image_path = os.path.join(folder_path, f"plot_{self.counter}.png")
-                # self.counter = self.counter + 1
-                # plt.title(
-                #     f"n_scale: {self.n_scale}, n_rotations: {self.n_rotations}, length_scale: {self.length_scale}, dimensions: {self.ssp_space.ssp_dim}")
-                # plt.savefig(image_path)
-                # lt.show()
-                # plt.clf()
+                plt.show()
 
     def _print_image(self, grid_objects):
         fig, ax = plt.subplots()
@@ -207,6 +283,70 @@ class SSP_Constructor:
                     Rectangle((y_pos_nulled, self.RES_X - x_pos_nulled), width=15, height=15, color='m', zorder=5))
         plt.title('Global Environment')
         plt.show()
+
+    def update_results(self, global_env_ssp_param, grid_objects_param):
+        walls_count = 0
+        for obj in grid_objects_param:
+            if get_value_from_string(obj.name['type']) == 'walls':
+                walls_count += 1
+        for obj in grid_objects_param:
+            obj_type = get_value_from_string(obj.name['type'])
+            obj_shape = get_value(obj.name['shape'], "shape")
+            object_ssp = self.vocab_combined[f"{obj_type.upper()}_{obj_shape.upper()}"]
+
+            inv_ssp = ~object_ssp
+
+            # get similarity map of label with all locations by binding with inverse ssp
+            out = global_env_ssp_param * inv_ssp
+            sims = self.ssp_grid | out
+            sims_map = sims.reshape((self.RES_X, self.RES_Y))
+            sims_map = np.rot90(sims_map, k=1)
+
+            top_k_coords, top_k_values = find_top_k_points(sims_map, k=walls_count)
+            pred_loc = np.array(np.unravel_index(np.argmax(sims_map), sims_map.shape))
+            x_correct = obj.y
+            y_correct = 200 - obj.x
+
+            correct = 0
+            false = 0
+            distance = 0
+
+            if obj_type != 'walls':
+                distance = abs(math.sqrt((pred_loc[1] - x_correct) ** 2 + (pred_loc[0] - y_correct) ** 2))
+                if distance < 5:
+                    correct = 1
+                else:
+                    false = 1
+            else:
+                for top_coord in top_k_coords:
+                    distance = abs(math.sqrt((top_coord[1] - x_correct) ** 2 + (top_coord[0] - y_correct) ** 2))
+                    if distance < 5:
+                        correct = 1
+                        false = 0
+                        break
+                    else:
+                        false = 1
+
+            self.results.correct_overall = self.results.correct_overall + correct
+            self.results.false_overall = self.results.false_overall + false
+            self.results.average_distance_overall = (self.results.average_distance_overall + distance) / 2
+            self.results.median_distance_overall.append(distance)
+            if false:
+                self.results.average_distance_overall_non_correct = (
+                                                                                self.results.average_distance_overall_non_correct + distance) / 2
+                self.results.median_distance_overall_non_correct.append(distance)
+
+            self.results.Elements[obj_type].correct = self.results.Elements[obj_type].correct + correct
+            self.results.Elements[obj_type].false = self.results.Elements[obj_type].false + false
+            self.results.Elements[obj_type].average_distance = (self.results.Elements[
+                                                                    obj_type].average_distance + distance) / 2
+            self.results.Elements[obj_type].median_distance.append(
+                distance)
+            if false:
+                self.results.Elements[obj_type].average_distance_non_correct = (self.results.Elements[
+                                                                                    obj_type].average_distance_non_correct + distance) / 2
+                self.results.Elements[
+                    obj_type].median_distance_non_correct.append(distance)
 
 
 def get_value_from_string(indexes_as_string):
