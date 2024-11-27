@@ -1,5 +1,9 @@
 import json
 import os
+import random
+
+import numpy as np
+import torch
 
 from dataset import TransitionDataset
 from src.SSPConstructor import SSPConstructor
@@ -25,6 +29,12 @@ def append_to_json_file(file_name, new_data):
 
     print(f"Daten wurden erfolgreich zu '{file_name}' hinzugefügt.")
 
+def set_random_seed(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
 def generate_files(idx, initialized_ssp):
     print('Generating idx', idx)
@@ -42,6 +52,7 @@ def generate_files(idx, initialized_ssp):
 
 
 if __name__ == "__main__":
+    set_random_seed(42)
     PATH = '../data/SSP/'
     if not os.path.exists(PATH):
         os.makedirs(PATH)
@@ -57,7 +68,7 @@ if __name__ == "__main__":
         process_data=1
     )
     combinations = [
-        {"n_rotations": 17, "n_scale": 17, "length_scale": 1}
+        {"n_rotations": 17, "n_scale": 17, "length_scale": 5}
     ]
     for combination in combinations:
         print(combination)

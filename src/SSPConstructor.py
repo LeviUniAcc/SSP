@@ -116,7 +116,66 @@ def plot_3d_heatmap(sims_map):
     )
     # Zeige den Plot
     fig.show()
-    fig.write_html("interactive_3d_plot.html")
+    fig.write_html("interactive_3d_plot_25-25-5.html")
+
+
+def compute_new_array(ssp_grid, env_ssp, vocab_combined):
+    num_samples = ssp_grid.shape[0]
+    new_array = np.empty(num_samples, dtype=object)
+
+    # Iteriere über alle SSPs
+    for idx in range(num_samples):
+        ssp = ssp_grid[idx].reshape(1, -1)
+
+        inverted_ssp = ~ssp
+        bound_ssp = inverted_ssp * env_ssp
+
+        best_key = None
+        best_similarity = -np.inf
+
+        for key, vocab_ssp in vocab_combined.items():
+            similarity = np.dot(bound_ssp, vocab_ssp.T)
+            if similarity > best_similarity and similarity > 0.7:
+                best_similarity = similarity
+                best_key = key
+
+        new_array[idx] = best_key
+
+    # Keys in eine numerische Darstellung umwandeln
+    keys = list(set(new_array))
+    key_to_int = {key: i for i, key in enumerate(keys)}
+    int_array = np.array([key_to_int[key] for key in new_array]).reshape(200, 200)
+    int_array = np.rot90(int_array, k=1)
+    # Erstelle die Heatmap
+    plt.figure(figsize=(10, 10))
+    plt.imshow(int_array, cmap='tab10', origin='lower')  # Verwende eine qualitative Farbcodierung
+    cbar = plt.colorbar()
+    cbar.set_ticks(range(len(keys)))
+    cbar.set_ticklabels(keys)
+    plt.title('Heatmap of Keys', fontsize=16)
+    plt.xlabel('X-axis', fontsize=12)
+    plt.ylabel('Y-axis', fontsize=12)
+    plt.show()
+    pass
+
+
+def plot_line_at_y(similarity_map, y_positions):
+    plt.figure(figsize=(10, 6))
+
+    # Iteriere über alle y-Positionen
+    for y in y_positions:
+        values_at_y = similarity_map[y, :]  # Extrahiere die Werte bei der aktuellen y-Position
+        plt.plot(range(similarity_map.shape[1]), values_at_y, label=f'y = {y}', linewidth=2)
+
+    # Beschriftung und Titel
+    plt.title('Line Chart for Multiple y Positions on Similarity Map', fontsize=16)
+    plt.xlabel('x Values', fontsize=12)
+    plt.ylabel('Similarity Value', fontsize=12)
+    plt.grid(True, linestyle='--', alpha=0.7)
+    plt.legend(fontsize=12)
+
+    # Plot anzeigen
+    plt.show()
 
 
 def find_top_k_points(sims_map, k=10):
@@ -164,7 +223,8 @@ class SSPConstructor:
         # create results
         self.update_results(global_env_ssp, grid_objects_param)
         # example extracted visualization
-        # self._print_extracted_image(global_env_ssp, grid_objects_param)
+        self._print_extracted_image(global_env_ssp, grid_objects_param)
+        print("")
         # return vector = "idk yet"
 
     def init_ssp_constructor(self):
@@ -211,6 +271,7 @@ class SSPConstructor:
         return ssp_grid, ssp_space, vocab_combined
 
     def _print_extracted_image(self, global_env_ssp_param, grid_objects):
+        # compute_new_array(self.ssp_grid, global_env_ssp_param, self.vocab_combined)
         walls_count = 0
         for obj in grid_objects:
             if get_value_from_string(obj.name['type']) == 'walls':
@@ -229,6 +290,7 @@ class SSPConstructor:
                 sims = self.ssp_grid | out
                 sims_map = sims.reshape((self.RES_X, self.RES_Y))
                 sims_map = np.rot90(sims_map, k=1)
+                # plot_line_at_y(sims_map, [10, 90])
 
                 top_k_coords, top_k_values = find_top_k_points(sims_map=sims_map, k=walls_count)
                 print("Koordinaten der größten Warscheinlichkeiten:", top_k_coords)
@@ -248,6 +310,7 @@ class SSPConstructor:
                 plt.xticks([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
                 plt.yticks([0, 20, 40, 60, 80, 100, 120, 140, 160, 180, 200])
                 plt.show()
+                pass
 
     def _print_image(self, grid_objects):
         fig, ax = plt.subplots()
@@ -333,7 +396,7 @@ class SSPConstructor:
             self.results.median_distance_overall.append(distance)
             if false:
                 self.results.average_distance_overall_non_correct = (
-                                                                                self.results.average_distance_overall_non_correct + distance) / 2
+                                                                            self.results.average_distance_overall_non_correct + distance) / 2
                 self.results.median_distance_overall_non_correct.append(distance)
 
             self.results.Elements[obj_type].correct = self.results.Elements[obj_type].correct + correct
