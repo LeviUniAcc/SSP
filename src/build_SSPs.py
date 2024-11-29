@@ -1,33 +1,50 @@
 import json
-import os
 import random
-
 import numpy as np
 import torch
+import multiprocessing as mp
+import argparse
+import pickle as pkl
+import os
+from dataset import TransitionDataset, TestTransitionDatasetSequence
+from SSPConstructor import SSPConstructor
 
-from dataset import TransitionDataset
-from src.SSPConstructor import SSPConstructor
-from datetime import datetime
+# Instantiate the parser
+parser = argparse.ArgumentParser()
+parser.add_argument('--cpus', type=int,
+                    help='Number of processes')
+parser.add_argument('--mode', type=str,
+                    help='Train (train) or validation (val)')
+args = parser.parse_args()
+
+NUM_PROCESSES = args.cpus
+MODE = args.mode
 
 
-def append_to_json_file(file_name, new_data):
-    if os.path.exists(file_name):
-        with open(file_name, "r") as json_file:
-            try:
-                data = json.load(json_file)
-                if not isinstance(data, list):
-                    data = [data]
-            except json.JSONDecodeError:
-                data = []
-    else:
-        data = []
+def append_to_json_file(file_name, new_data, lock):
+    with lock:
+        directory = os.path.dirname(file_name)
+        if directory and not os.path.exists(directory):
+            os.makedirs(directory)
+            print(f"Verzeichnis '{directory}' wurde erstellt.")
+        if os.path.exists(file_name):
+            with open(file_name, "r") as json_file:
+                try:
+                    data = json.load(json_file)
+                    if not isinstance(data, list):
+                        data = [data]
+                except json.JSONDecodeError:
+                    data = []
+        else:
+            data = []
 
-    data.append(new_data)
+        data.append(new_data)
 
-    with open(file_name, "w") as json_file:
-        json.dump(data, json_file, indent=4)
+        with open(file_name, "w") as json_file:
+            json.dump(data, json_file, indent=4)
 
-    print(f"Daten wurden erfolgreich zu '{file_name}' hinzugefügt.")
+        print(f"Daten wurden erfolgreich zu '{file_name}' hinzugefügt.")
+
 
 def set_random_seed(seed):
     random.seed(seed)
@@ -36,48 +53,112 @@ def set_random_seed(seed):
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
 
-def generate_files(idx, initialized_ssp):
+
+def generate_files(args):
+    idx, initialized_ssp, PATH, dataset, lock = args
     print('Generating idx', idx)
-    print(os.path.abspath(PATH + str(idx) + '.pkl'))
     if os.path.exists(PATH + str(idx) + '.pkl'):
         print('Index', idx, 'skipped.')
         return
-    states, actions, lens, n_nodes = dataset.__getitem_ssp__(idx, initialized_ssp)
-    return
-    with open(PATH + str(idx) + '.pkl', 'wb') as f:
-        pkl.dump([states, actions, lens, n_nodes], f)
-        pass
-
+    if MODE == 'train' or MODE == 'val':
+        ssp_list_for_index = dataset.__getitem_ssp__(idx, initialized_ssp)
+        # with open(PATH + str(idx) + '.pkl', 'wb') as f:
+        # pkl.dump([states, actions, lens, n_nodes], f)
+        file = "utils/output_images/results.json"
+        file2 = "utils/output_images/results2.json"
+        append_to_json_file(file, initialized_ssp.results.to_dict(), lock)
+        append_to_json_file(file2, [idx, [[x for x in ssp[0]] for ssp in ssp_list_for_index]], lock)
+    elif MODE == 'test':
+        dem_expected_states, dem_expected_actions, dem_expected_lens, dem_expected_nodes, \
+            dem_unexpected_states, dem_unexpected_actions, dem_unexpected_lens, dem_unexpected_nodes, \
+            query_expected_frames, target_expected_actions, \
+            query_unexpected_frames, target_unexpected_actions = dataset.__getitem__(idx)
+        with open(PATH + str(idx) + '.pkl', 'wb') as f:
+            pkl.dump([
+                dem_expected_states, dem_expected_actions, dem_expected_lens, dem_expected_nodes, \
+                dem_unexpected_states, dem_unexpected_actions, dem_unexpected_lens, dem_unexpected_nodes, \
+                query_expected_frames, target_expected_actions, \
+                query_unexpected_frames, target_unexpected_actions], f
+            )
+    else:
+        raise ValueError('MODE can be only train, val or test.')
     print(PATH + str(idx) + '.pkl saved.')
 
 
 if __name__ == "__main__":
-    set_random_seed(42)
-    PATH = '../data/SSP/'
-    if not os.path.exists(PATH):
-        os.makedirs(PATH)
-        print(PATH, 'directory created.')
-    dataset = TransitionDataset(
-        path='../data/',  # not original
-        types=['demo_data'],
-        mode="train",
-        max_len=30,
-        num_test=1,
-        num_trials=9,
-        action_range=15,
-        process_data=1
-    )
-    combinations = [
-        {"n_rotations": 17, "n_scale": 17, "length_scale": 5}
-    ]
-    for combination in combinations:
-        print(combination)
-        initialized_ssp = SSPConstructor(
-            n_rotations=combination["n_rotations"],
-            n_scale=combination["n_scale"],
-            length_scale=combination["length_scale"]
-        )
-        generate_files(5, initialized_ssp)
+    with mp.Manager() as manager:
+        lock = manager.Lock()
+        set_random_seed(42)
+        if MODE == 'train':
+            print('TRAIN MODE')
+            PATH = 'data/external/bib_train/graphs/all_tasks/train_dgl_hetero_nobound_4feats/'
+            if not os.path.exists(PATH):
+                os.makedirs(PATH)
+                print(PATH, 'directory created.')
+            dataset = TransitionDataset(
+                path='data/external/bib_train/',
+                types=['single_object'],
+                mode="train",
+                max_len=30,
+                num_test=1,
+                num_trials=9,
+                action_range=10,
+                process_data=1
+            )
+            pool = mp.Pool(processes=NUM_PROCESSES)
+            print('Starting graph generation with', NUM_PROCESSES, 'processes...')
+            initialized_ssp = SSPConstructor(10, 10, 5)
+            pool.map(generate_files, [(i, initialized_ssp, PATH, dataset, lock) for i in range(dataset.__len__())])
+            pool.close()
 
-        file = "output_images/results.json"
-        append_to_json_file(file, initialized_ssp.results.to_dict())
+        elif MODE == 'val':
+            print('VALIDATION MODE')
+            types = ['multi_agent', 'instrumental_action', 'preference', 'single_object']
+            for t in range(len(types)):
+                PATH = '/datasets/external/bib_train/graphs/all_tasks/val_dgl_hetero_nobound_4feats/' + types[t] + '/'
+                if not os.path.exists(PATH):
+                    os.makedirs(PATH)
+                    print(PATH, 'directory created.')
+                dataset = TransitionDataset(
+                    path='/datasets/external/bib_train/',
+                    types=[types[t]],
+                    mode="val",
+                    max_len=30,
+                    num_test=1,
+                    num_trials=9,
+                    action_range=10,
+                    process_data=0
+                )
+                pool = mp.Pool(processes=NUM_PROCESSES)
+                print('Starting', types[t], 'graph generation with', NUM_PROCESSES, 'processes...')
+                pool.map(generate_files, [i for i in range(dataset.__len__())])
+                pool.close()
+        elif MODE == 'test':
+            print('TEST MODE')
+            types = [
+                'preference', 'multi_agent', 'inaccessible_goal',
+                'efficiency_irrational', 'efficiency_time', 'efficiency_path',
+                'instrumental_no_barrier', 'instrumental_blocking_barrier', 'instrumental_inconsequential_barrier'
+            ]
+            for t in range(len(types)):
+                PATH = '/datasets/external/bib_evaluation_1_1/graphs/all_tasks_dgl_hetero_nobound_4feats/' + types[
+                    t] + '/'
+                if not os.path.exists(PATH):
+                    os.makedirs(PATH)
+                    print(PATH, 'directory created.')
+                dataset = TestTransitionDatasetSequence(
+                    path='/datasets/external/bib_evaluation_1_1/',
+                    task_type=types[t],
+                    mode="test",
+                    num_test=1,
+                    num_trials=9,
+                    action_range=10,
+                    process_data=0,
+                    max_len=30
+                )
+                pool = mp.Pool(processes=NUM_PROCESSES)
+                print('Starting', types[t], 'graph generation with', NUM_PROCESSES, 'processes...')
+                pool.map(generate_files, [i for i in range(dataset.__len__())])
+                pool.close()
+        else:
+            raise ValueError

@@ -221,10 +221,10 @@ class SSPConstructor:
         # self._print_image(grid_objects_param)
 
         # create results
-        self.update_results(global_env_ssp, grid_objects_param)
+        # self.update_results(global_env_ssp, grid_objects_param)
         # example extracted visualization
-        self._print_extracted_image(global_env_ssp, grid_objects_param)
-        print("")
+        # self._print_extracted_image(global_env_ssp, grid_objects_param)
+        return global_env_ssp
         # return vector = "idk yet"
 
     def init_ssp_constructor(self):
