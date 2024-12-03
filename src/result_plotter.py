@@ -1,6 +1,9 @@
 import json
+import os
+
 import matplotlib.pyplot as plt
 import numpy as np
+import pickle as pkl
 
 
 # Funktion zum Einlesen des JSON-Files
@@ -8,9 +11,9 @@ def load_json_from_file(file_path):
     """
     Liest das JSON aus einer Datei und gibt es als Python-Datenstruktur zurück.
     """
-    with open(file_path, 'r') as file:
-        data = json.load(file)
-    return data
+    if os.path.exists(file_path):
+        with open(file_path, 'rb') as f:
+            return pkl.load(f)
 
 
 # Funktion zum Erstellen des Plots für 'correct'/'false' und 'average_distance_non_correct'
@@ -25,18 +28,18 @@ def plot_element_data(data, element_name, ax1, ax2):
     correct_values = []
     false_values = []
     avg_distance_non_correct_values = []
-
+    data = [data]
     for item in data:
-        length_scale = item["length_scale"]
-        n_rotations = item["n_rotations"]
-        n_scale = item["n_scale"]
+        length_scale = item.length_scale
+        n_rotations = item.n_rotations
+        n_scale = item.n_scale
 
         # Hole die Werte für das angegebene Element (z.B. 'agent', 'walls', etc.)
-        element_data = item["Elements"].get(element_name)
+        element_data = item.Elements.get(element_name)
         if element_data:
-            correct = element_data["correct"]
-            false = element_data["false"]
-            avg_distance_non_correct = element_data["average_distance_non_correct"]
+            correct = element_data.correct
+            false = element_data.false
+            avg_distance_non_correct = element_data.average_distance_non_correct
 
             # Speichere die Kombinationen und die zugehörigen Werte
             combinations.append(f"LS={length_scale}, NR={n_rotations}, NS={n_scale}")
@@ -106,10 +109,9 @@ def plot_multiple_elements(data, element_names):
 
 
 # Beispielaufruf: JSON-Datei laden und Plots für mehrere Elemente erstellen
-data = load_json_from_file("output_images/results.json")
+idx = 0
+data = load_json_from_file(f'data/external/bib_train/results_demo/results_idx_{idx}.pkl')
 
 # Liste von Elementen, die geplottet werden sollen
 element_names = ['walls', 'agent']  # Füge hier weitere Elemente hinzu, falls gewünscht
 plot_multiple_elements(data, element_names)
-
-

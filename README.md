@@ -6,11 +6,11 @@
 
 ## Run
 
-python .\src\build_SSPs.py --mode train --cpus 5   
+python .\src\build_SSPs.py --mode train --cpus 1  
 
 ## TODO
 
-### 15.11 - 22.11
+### 15.11 - 29.11
 
  - [x] change sspspace py file with library
  - [x] add vocab 2 with combined vectors of shape type (color)
@@ -19,3 +19,11 @@ python .\src\build_SSPs.py --mode train --cpus 5
  - [x] add prints for all the other attributes
  - [x] make code a bit cleaner
 
+### 29.11 - 06.12
+
+- [ ] multiprocessing with fixxed seed
+- [X] save data with pikle
+- [X] save vocab and default environment with pikle
+- [ ] load data with dataset
+- [ ] new plotting script
+- [ ] test main for exact one image

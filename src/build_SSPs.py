@@ -21,31 +21,6 @@ NUM_PROCESSES = args.cpus
 MODE = args.mode
 
 
-def append_to_json_file(file_name, new_data, lock):
-    with lock:
-        directory = os.path.dirname(file_name)
-        if directory and not os.path.exists(directory):
-            os.makedirs(directory)
-            print(f"Verzeichnis '{directory}' wurde erstellt.")
-        if os.path.exists(file_name):
-            with open(file_name, "r") as json_file:
-                try:
-                    data = json.load(json_file)
-                    if not isinstance(data, list):
-                        data = [data]
-                except json.JSONDecodeError:
-                    data = []
-        else:
-            data = []
-
-        data.append(new_data)
-
-        with open(file_name, "w") as json_file:
-            json.dump(data, json_file, indent=4)
-
-        print(f"Daten wurden erfolgreich zu '{file_name}' hinzugefügt.")
-
-
 def set_random_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -60,14 +35,25 @@ def generate_files(args):
     if os.path.exists(PATH + str(idx) + '.pkl'):
         print('Index', idx, 'skipped.')
         return
-    if MODE == 'train' or MODE == 'val':
+    if MODE == 'demo':
+        ssp_list_for_index = dataset.__getitem_ssp__(idx, initialized_ssp)
+        file = f'data/external/bib_train/results_demo/results_idx_{idx}.pkl'
+        file2 = f'data/external/bib_train/ssp_dataset_demo/environment_ssps_idx_{idx}.pkl'
+        with open(file, 'wb') as f:
+            pkl.dump(initialized_ssp.results, f)
+        with open(file2, 'wb') as f:
+            pkl.dump(ssp_list_for_index, f)
+    elif MODE == 'train' or MODE == 'val':
         ssp_list_for_index = dataset.__getitem_ssp__(idx, initialized_ssp)
         # with open(PATH + str(idx) + '.pkl', 'wb') as f:
         # pkl.dump([states, actions, lens, n_nodes], f)
-        file = "utils/output_images/results.json"
-        file2 = "utils/output_images/results2.json"
-        append_to_json_file(file, initialized_ssp.results.to_dict(), lock)
-        append_to_json_file(file2, [idx, [[x for x in ssp[0]] for ssp in ssp_list_for_index]], lock)
+        file = f'data/external/bib_train/results/results_idx_{idx}.json'
+        file2 = f'data/external/bib_train/ssp_dataset/environment_ssps_idx_{idx}.json'
+        with lock:
+            with open(file, 'wb') as f:
+                pkl.dump(initialized_ssp.results, f)
+            with open(file2, 'wb') as f:
+                pkl.dump(ssp_list_for_index, f)
     elif MODE == 'test':
         dem_expected_states, dem_expected_actions, dem_expected_lens, dem_expected_nodes, \
             dem_unexpected_states, dem_unexpected_actions, dem_unexpected_lens, dem_unexpected_nodes, \
@@ -81,15 +67,29 @@ def generate_files(args):
                 query_unexpected_frames, target_unexpected_actions], f
             )
     else:
-        raise ValueError('MODE can be only train, val or test.')
+        raise ValueError(f'MODE ({MODE}) can be only demo, train, val or test.')
     print(PATH + str(idx) + '.pkl saved.')
 
 
 if __name__ == "__main__":
     with mp.Manager() as manager:
         lock = manager.Lock()
-        set_random_seed(42)
-        if MODE == 'train':
+        if MODE == 'demo':
+            print('DEMO MODE')
+            PATH = 'data/external/bib_train/graphs/all_tasks/demo_dgl_hetero_nobound_4feats/'
+            dataset = TransitionDataset(
+                path='data/external/bib_train/',
+                types=['single_object'],
+                mode="train",
+                max_len=30,
+                num_test=1,
+                num_trials=9,
+                action_range=10,
+                process_data=1
+            )
+            initialized_ssp = SSPConstructor(10, 10, 5)
+            generate_files([0, initialized_ssp, PATH, dataset, None])
+        elif MODE == 'train':
             print('TRAIN MODE')
             PATH = 'data/external/bib_train/graphs/all_tasks/train_dgl_hetero_nobound_4feats/'
             if not os.path.exists(PATH):
@@ -110,7 +110,6 @@ if __name__ == "__main__":
             initialized_ssp = SSPConstructor(10, 10, 5)
             pool.map(generate_files, [(i, initialized_ssp, PATH, dataset, lock) for i in range(dataset.__len__())])
             pool.close()
-
         elif MODE == 'val':
             print('VALIDATION MODE')
             types = ['multi_agent', 'instrumental_action', 'preference', 'single_object']

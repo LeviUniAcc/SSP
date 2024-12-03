@@ -11,8 +11,6 @@ import sys
 from SSPConstructor import SSPConstructor
 from grid_objects import parse_objects
 
-sys.path.append('/projects/bortoletto/irene/')
-
 
 # ========================== Helper functions ==========================
 
@@ -42,13 +40,13 @@ def index_data(json_list, path_list):
     return data_tuples
 
 
-def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSPConstructor):
+def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSPConstructor, mode):
     with open(jsonfile, 'rb') as f:
         frame_data = json.load(f)
     flat_list = [x for xs in frame_data for x in xs]
     # extract entities
     grid_objs = parse_objects(flat_list[frame_idx])
-    frame_ssp = initialized_ssp.generate_env_ssp(grid_objs)
+    frame_ssp = initialized_ssp.generate_env_ssp(grid_objs, mode)
     return frame_ssp
 
 
@@ -163,7 +161,6 @@ class TransitionDataset(torch.utils.data.Dataset):
         for tl in trial_len:
             for t, n in tl:
                 video = self.data_tuples[t][n][0]
-                # states[-1].append(self._get_frame_graph(video, self.data_tuples[t][n][1]))
                 ssps.append(_get_frame_ssp(video, self.data_tuples[t][n][1], initialized_ssp))
         return ssps
 
