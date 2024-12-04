@@ -40,13 +40,13 @@ def index_data(json_list, path_list):
     return data_tuples
 
 
-def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSPConstructor, mode):
+def _get_frame_ssp(jsonfile, frame_idx, initialized_ssp: SSPConstructor):
     with open(jsonfile, 'rb') as f:
         frame_data = json.load(f)
     flat_list = [x for xs in frame_data for x in xs]
     # extract entities
     grid_objs = parse_objects(flat_list[frame_idx])
-    frame_ssp = initialized_ssp.generate_env_ssp(grid_objs, mode)
+    frame_ssp = initialized_ssp.generate_env_ssp(grid_objs)
     return frame_ssp
 
 
@@ -161,7 +161,7 @@ class TransitionDataset(torch.utils.data.Dataset):
         for tl in trial_len:
             for t, n in tl:
                 video = self.data_tuples[t][n][0]
-                ssps.append(_get_frame_ssp(video, self.data_tuples[t][n][1], initialized_ssp))
+                ssps.append((f'{t}-{n}', _get_frame_ssp(video, self.data_tuples[t][n][1], initialized_ssp)))
         return ssps
 
     def __getitem_ssp__(self, idx, initialized_ssp):

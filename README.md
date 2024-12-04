@@ -15,15 +15,15 @@ python .\src\build_SSPs.py --mode train --cpus 1
  - [x] change sspspace py file with library
  - [x] add vocab 2 with combined vectors of shape type (color)
  - [x] generate all ssps only once at the start
- - [ ] make statistics for different length_scales
+ - [ ] *make statistics for different length_scales*
  - [x] add prints for all the other attributes
  - [x] make code a bit cleaner
 
 ### 29.11 - 06.12
 
-- [ ] multiprocessing with fixxed seed
+- [ ] *multiprocessing with fixxed seed* -> probably not needed due to saveing the initial ssps with pikle
 - [X] save data with pikle
 - [X] save vocab and default environment with pikle
 - [ ] load data with dataset
-- [ ] new plotting script
+- [ ] *new plotting script*
 - [ ] test main for exact one image

@@ -87,7 +87,7 @@ if __name__ == "__main__":
                 action_range=10,
                 process_data=1
             )
-            initialized_ssp = SSPConstructor(10, 10, 5)
+            initialized_ssp = SSPConstructor(10, 10, 5, 1)
             generate_files([0, initialized_ssp, PATH, dataset, None])
         elif MODE == 'train':
             print('TRAIN MODE')
@@ -107,7 +107,7 @@ if __name__ == "__main__":
             )
             pool = mp.Pool(processes=NUM_PROCESSES)
             print('Starting graph generation with', NUM_PROCESSES, 'processes...')
-            initialized_ssp = SSPConstructor(10, 10, 5)
+            initialized_ssp = SSPConstructor(10, 10, 5, 1)
             pool.map(generate_files, [(i, initialized_ssp, PATH, dataset, lock) for i in range(dataset.__len__())])
             pool.close()
         elif MODE == 'val':

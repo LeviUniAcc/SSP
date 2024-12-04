@@ -5,12 +5,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import nengo_spa as spa
 import pickle as pkl
-import torch
 import plotly.graph_objects as go
-from scipy.ndimage import maximum_filter, label
-from datetime import datetime
 from matplotlib.patches import Rectangle, Polygon, Circle
-from sspspace import HexagonalSSPSpace, SSP, ssp
+from sspspace import HexagonalSSPSpace, SSP
 
 SHAPES = [
     # walls
@@ -193,17 +190,62 @@ def find_top_k_points(sims_map, k=10):
 
 class SSPConstructor:
 
-    def __init__(self, n_rotations: int = 13, n_scale: int = 13, length_scale: int = 1):
-        self.n_scale = n_scale
-        self.n_rotations = n_rotations
+    def __init__(self, n_rotations: int = 13, n_scale: int = 13, length_scale: int = 1, init_new_ssp: int = 1):
         self.RES_X, self.RES_Y = 200, 200
-        self.length_scale = length_scale
+        filename = f'data/external/bib_train/vocab_and_ssp_grid_{n_rotations}_{n_scale}_{length_scale}.pkl'
+        if os.path.exists(filename) & (init_new_ssp == 0):
+            with open(filename, 'rb') as f:
+                self.ssp_grid, self.ssp_space, self.vocab_combined, self.n_scale, self.n_rotations, self.length_scale = pkl.load(f)
+        else:
+            self.n_scale = n_scale
+            self.n_rotations = n_rotations
+            self.length_scale = length_scale
+
+            # Create SSP spaces for xy coordinates and labels
+            xs = np.linspace(0, self.RES_X, self.RES_X)
+            ys = np.linspace(0, self.RES_Y, self.RES_Y)
+            x, y = np.meshgrid(xs, ys)
+            xys = np.vstack((x.flatten(), y.flatten())).T
+
+            self.ssp_space = HexagonalSSPSpace(domain_dim=2, n_rotates=self.n_rotations, n_scales=self.n_scale)
+            self.ssp_space.update_lengthscale(self.length_scale)
+
+            # Generate xy coordinates
+            self.ssp_grid = self.ssp_space.encode(xys)
+
+            # Generate object SSPs
+            vocab = spa.Vocabulary(dimensions=self.ssp_space.ssp_dim)
+            vocab_simple = {}
+            vocab_shape_helper = {}
+            vocab_type_helper = {}
+            self.vocab_combined = {}
+
+            # Add semantic pointers for each shape to the vocabulary
+            for i, shape_name in enumerate(SHAPES):
+                shape_vector = vocab.algebra.create_vector(self.ssp_space.ssp_dim, properties={"positive", "unitary"})
+                shape_ssp = SSP(shape_vector)
+                vocab_simple[f"{shape_name.upper().replace(' ', '')}"] = shape_ssp
+                vocab_shape_helper[f"{shape_name.upper().replace(' ', '')}"] = shape_ssp
+
+            # Add semantic pointers for each entity to the vocabulary
+            for i, entity_name in enumerate(ENTITIES):
+                entity_vector = vocab.algebra.create_vector(self.ssp_space.ssp_dim, properties={"positive", "unitary"})
+                entity_ssp = SSP(entity_vector)
+                vocab_simple[f"{entity_name.upper().replace(' ', '')}"] = entity_ssp
+                vocab_type_helper[f"{entity_name.upper().replace(' ', '')}"] = entity_ssp
+
+            # combine ssps
+            for type_key, type_ssp in vocab_type_helper.items():
+                for shape_key, shape_ssp in vocab_shape_helper.items():
+                    object_ssp = type_ssp * shape_ssp
+                    self.vocab_combined[f"{type_key.upper()}_{shape_key.upper()}"] = object_ssp
+            with open(filename, 'wb') as f:
+                pkl.dump([self.ssp_grid, self.ssp_space, self.vocab_combined, self.n_scale, self.n_rotations, self.length_scale], f)
         self.counter = 1
-        self.results = Result(n_rotations=n_rotations, n_scale=n_scale, length_scale=length_scale)
-        self.ssp_grid, self.ssp_space, self.vocab_combined = self.init_ssp_constructor()
+        self.results = Result(n_rotations=self.n_rotations, n_scale=self.n_scale, length_scale=self.length_scale)
         self.results.dimensions = self.ssp_space.domain_dim
 
-    def generate_env_ssp(self, grid_objects_param, mode):
+    def generate_env_ssp(self, grid_objects_param):
         # init empty environment
         global_env_ssp = SSP(np.zeros(self.ssp_space.ssp_dim).reshape((1, -1)))
         self.results.img_amount = self.results.img_amount + 1
@@ -228,54 +270,6 @@ class SSPConstructor:
         # self._print_extracted_image(global_env_ssp, grid_objects_param)
         return global_env_ssp
         # return vector = "idk yet"
-
-    def init_ssp_constructor(self):
-        filename = 'data/external/bib_train/vocab_and_ssp_grid.pkl'
-        if os.path.exists(filename):
-            with open(filename, 'rb') as f:
-                return pkl.load(f)
-        else:
-            # Create SSP spaces for xy coordinates and labels
-            xs = np.linspace(0, self.RES_X, self.RES_X)
-            ys = np.linspace(0, self.RES_Y, self.RES_Y)
-            x, y = np.meshgrid(xs, ys)
-            xys = np.vstack((x.flatten(), y.flatten())).T
-
-            ssp_space = HexagonalSSPSpace(domain_dim=2, n_rotates=self.n_rotations, n_scales=self.n_scale)
-            ssp_space.update_lengthscale(self.length_scale)
-
-            # Generate xy coordinates
-            ssp_grid = ssp_space.encode(xys)
-
-            # Generate object SSPs
-            vocab = spa.Vocabulary(dimensions=ssp_space.ssp_dim)
-            vocab_simple = {}
-            vocab_shape_helper = {}
-            vocab_type_helper = {}
-            vocab_combined = {}
-
-            # Add semantic pointers for each shape to the vocabulary
-            for i, shape_name in enumerate(SHAPES):
-                shape_vector = vocab.algebra.create_vector(ssp_space.ssp_dim, properties={"positive", "unitary"})
-                shape_ssp = SSP(shape_vector)
-                vocab_simple[f"{shape_name.upper().replace(' ', '')}"] = shape_ssp
-                vocab_shape_helper[f"{shape_name.upper().replace(' ', '')}"] = shape_ssp
-
-            # Add semantic pointers for each entity to the vocabulary
-            for i, entity_name in enumerate(ENTITIES):
-                entity_vector = vocab.algebra.create_vector(ssp_space.ssp_dim, properties={"positive", "unitary"})
-                entity_ssp = SSP(entity_vector)
-                vocab_simple[f"{entity_name.upper().replace(' ', '')}"] = entity_ssp
-                vocab_type_helper[f"{entity_name.upper().replace(' ', '')}"] = entity_ssp
-
-            # combine ssps
-            for type_key, type_ssp in vocab_type_helper.items():
-                for shape_key, shape_ssp in vocab_shape_helper.items():
-                    object_ssp = type_ssp * shape_ssp
-                    vocab_combined[f"{type_key.upper()}_{shape_key.upper()}"] = object_ssp
-            with open(filename, 'wb') as f:
-                pkl.dump([ssp_grid, ssp_space, vocab_combined], f)
-            return ssp_grid, ssp_space, vocab_combined
 
     def _print_extracted_image(self, global_env_ssp_param, grid_objects):
         # compute_new_array(self.ssp_grid, global_env_ssp_param, self.vocab_combined)
