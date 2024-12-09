@@ -194,9 +194,11 @@ class SSPConstructor:
         self.RES_X, self.RES_Y = 200, 200
         filename = f'data/external/bib_train/vocab_and_ssp_grid_{n_rotations}_{n_scale}_{length_scale}.pkl'
         if os.path.exists(filename) & (init_new_ssp == 0):
+            print("reuse init SSP")
             with open(filename, 'rb') as f:
                 self.ssp_grid, self.ssp_space, self.vocab_combined, self.n_scale, self.n_rotations, self.length_scale = pkl.load(f)
         else:
+            print("generate new init SSP")
             self.n_scale = n_scale
             self.n_rotations = n_rotations
             self.length_scale = length_scale
