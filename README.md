@@ -19,11 +19,11 @@ python .\src\build_SSPs.py --mode train --cpus 1
  - [x] add prints for all the other attributes
  - [x] make code a bit cleaner
 
-### 29.11 - 06.12
+### 29.11 - 13.12
 
 - [ ] *multiprocessing with fixxed seed* -> probably not needed due to saveing the initial ssps with pikle
 - [X] save data with pikle
 - [X] save vocab and default environment with pikle
 - [ ] load data with dataset
 - [ ] *new plotting script*
-- [ ] test main for exact one image
+- [X] demo main

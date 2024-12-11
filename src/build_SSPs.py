@@ -1,4 +1,3 @@
-import json
 import random
 import numpy as np
 import torch
@@ -34,19 +33,19 @@ def generate_files(arguments):
     print('Generating idx', idx)
     if MODE == 'demo':
         ssp_list_for_index = dataset.__getitem__(idx)
-        file = f'data/external/bib_train/results_demo/results_idx_{idx}.pkl'
-        file2 = f'data/external/bib_train/ssp_dataset_demo/environment_ssps_idx_{idx}.pkl'
-        with open(file, 'wb') as f:
-            pkl.dump(dataset.initialized_ssp.results, f)
+        # file = f'data/external/bib_train/results/demo/results_idx_{idx}.pkl'
+        file2 = f'data/external/bib_train/ssps/demo/environment_ssps_idx_{idx}.pkl'
+        # with open(file, 'wb') as f:
+        #    pkl.dump(dataset.initialized_ssp.results, f)
         with open(file2, 'wb') as f:
             pkl.dump(ssp_list_for_index, f)
     elif MODE == 'train' or MODE == 'val':
         ssp_list_for_index = dataset.__getitem__(idx)
-        file = f'data/external/bib_train/results/results_idx_{idx}.pkl'
-        file2 = f'data/external/bib_train/ssp_dataset/environment_ssps_idx_{idx}.pkl'
+        # file = f'data/external/bib_train/results/results_idx_{idx}.pkl'
+        file2 = f'data/external/bib_train/ssps/environment_ssps_idx_{idx}.pkl'
         with lock:
-            with open(file, 'wb') as f:
-                pkl.dump(dataset.initialized_ssp.results, f)
+        #    with open(file, 'wb') as f:
+        #        pkl.dump(dataset.initialized_ssp.results, f)
             with open(file2, 'wb') as f:
                 pkl.dump(ssp_list_for_index, f)
     else:
@@ -62,7 +61,7 @@ if __name__ == "__main__":
             dataset = SSPDataset(
                 path='data/external/bib_train/',
                 initialized_ssp=initialized_ssp,
-                types=['single_object'],
+                types=['multi_agent', 'preference', 'single_object'],
                 mode="train",
                 max_len=30,
                 num_test=1,
@@ -77,7 +76,7 @@ if __name__ == "__main__":
             dataset = SSPDataset(
                 path='data/external/bib_train/',
                 initialized_ssp=initialized_ssp,
-                types=['single_object'],
+                types=['multi_agent', 'preference', 'single_object'],
                 mode="train",
                 max_len=30,
                 num_test=1,
